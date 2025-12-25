@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Retirement Monte Carlo Simulator</title>
+
+    <!-- Chart.js (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-right: 24px; }
+        label { display: block; font-size: 12px; opacity: 0.8; margin-bottom: 4px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
+        button { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; }
+        .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .card { border: 1px solid #eee; border-radius: 12px; padding: 16px; margin-top: 16px; }
+        .muted { opacity: 0.7; }
+        pre { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 12px; overflow: auto; }
+        .error { border-color: #f3c0c0; background: #fff5f5; }
+        .ok { border-color: #cfe9d6; background: #f5fff8; }
+        .kvs { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 10px; }
+        .kv { border: 1px solid #eee; border-radius: 10px; padding: 10px; }
+        .kv .k { font-size: 12px; opacity: 0.7; }
+        .kv .v { font-size: 18px; font-weight: 650; margin-top: 4px; }
+        canvas { max-height: 420px; }
+    </style>
+</head>
+
+<body>
+<h1>Retirement Monte Carlo Simulator</h1>
+<p class="muted">
+    This tool performs Monte Carlo simulations to model the distribution of possible
+    retirement wealth outcomes under different contribution and risk assumptions.
+</p>
+
+
+<form id="simForm" class="card">
+    <div class="grid">
+        <div>
+            <label for="currentAge">Current Age</label>
+            <input id="currentAge" type="number" min="0" step="1" value="25" required />
+        </div>
+
+        <div>
+            <label for="retirementAge">Retirement Age</label>
+            <input id="retirementAge" type="number" min="0" step="1" value="65" required />
+        </div>
+
+        <div>
+            <label for="currentSavings">Current Savings</label>
+            <input id="currentSavings" type="number" min="0" step="0.01" value="10000" required />
+        </div>
+
+        <div>
+            <label for="yearlyContribution">Yearly Contribution</label>
+            <input id="yearlyContribution" type="number" min="0" step="0.01" value="12000" required />
+        </div>
+
+        <div>
+            <label for="targetAmount">Target Amount</label>
+            <input id="targetAmount" type="number" min="0" step="0.01" value="1000000" required />
+        </div>
+
+        <div>
+            <label for="numSimulations"># Simulations</label>
+            <input id="numSimulations" type="number" min="1" step="1" value="200" required />
+        </div>
+
+        <div>
+            <label for="riskProfile">Risk Profile</label>
+            <select id="riskProfile" required>
+                <option value="conservative">conservative</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="aggressive">aggressive</option>
+            </select>
+        </div>
+
+    </div>
+
+    <div class="row" style="margin-top: 12px;">
+        <button type="submit" id="runBtn">Run Simulation</button>
+        <span id="status" class="muted"></span>
+    </div>
+</form>
+
+<div id="summaryCard" class="card" style="display:none;">
+    <h2 style="margin-top:0;">Summary</h2>
+    <div class="kvs" id="kvs"></div>
+</div>
+
+<div id="chartCard" class="card" style="display:none;">
+    <div class="row" style="justify-content: space-between;">
+        <h2 style="margin:0;">Sample Paths</h2>
+        <span class="muted" id="chartNote"></span>
+    </div>
+    <canvas id="pathsChart"></canvas>
+</div>
+
+<div hidden id="rawCard" class="card" style="display:none;">
+    <h2 style="margin-top:0;">Raw Response / Error</h2>
+    <pre id="raw"></pre>
+</div>
+
+<script>
+    const form = document.getElementById('simForm');
+    const statusEl = document.getElementById('status');
+    const runBtn = document.getElementById('runBtn');
+
+    const summaryCard = document.getElementById('summaryCard');
+    const chartCard = document.getElementById('chartCard');
+    const rawCard = document.getElementById('rawCard');
+
+    const kvs = document.getElementById('kvs');
+    const raw = document.getElementById('raw');
+    const chartNote = document.getElementById('chartNote');
+
+    const chartCanvas = document.getElementById('pathsChart');
+    let chart = null;
+
+    function num(id) {
+      const v = document.getElementById(id).value;
+      return v === "" ? null : Number(v);
+    }
+    function str(id) {
+      return document.getElementById(id).value;
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = msg || "";
+    }
+
+    function showRaw(obj) {
+      rawCard.style.display = "block";
+      raw.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    }
+
+    function hideRaw() {
+      rawCard.style.display = "none";
+      raw.textContent = "";
+    }
+
+    function formatMoney(x) {
+      if (typeof x !== "number" || !isFinite(x)) return String(x);
+      return x.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function renderSummary(data) {
+      summaryCard.style.display = "block";
+      kvs.innerHTML = "";
+
+      const items = [
+        ["numSimulations", data.numSimulations],
+        ["targetAmount", formatMoney(data.targetAmount)],
+        ["medianWealth", formatMoney(data.medianWealth)],
+        ["p10Wealth", formatMoney(data.p10Wealth)],
+        ["p90Wealth", formatMoney(data.p90Wealth)],
+        ["probabilityReachTarget", data.probabilityReachTarget]
+      ];
+
+      for (const [k, v] of items) {
+        const div = document.createElement("div");
+        div.className = "kv";
+        div.innerHTML = `<div class="k">${k}</div><div class="v">${v}</div>`;
+        kvs.appendChild(div);
+      }
+    }
+
+    function makeLabels(pathLen) {
+      // x-axis: year index (0..N)
+      return Array.from({ length: pathLen }, (_, i) => i);
+    }
+
+    function renderChart(samplePaths, maxDraw) {
+      chartCard.style.display = "block";
+
+      if (!Array.isArray(samplePaths) || samplePaths.length === 0) {
+        chartNote.textContent = "No samplePaths returned.";
+        if (chart) { chart.destroy(); chart = null; }
+        return;
+      }
+
+      const toDraw = samplePaths.slice(0, Math.max(1, Math.min(maxDraw, samplePaths.length)));
+      chartNote.textContent = `Showing ${samplePaths.length} random sample paths`;
+
+      const labels = makeLabels(toDraw[0].length);
+
+      const datasets = toDraw.map((path, idx) => ({
+        label: `Path ${idx + 1}`,
+        data: path,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.15
+      }));
+
+      if (chart) chart.destroy();
+
+      chart = new Chart(chartCanvas, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: false },
+          plugins: {
+            legend: { display: true },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.parsed.y)}`
+              }
+            }
+          },
+          scales: {
+            x: { title: { display: true, text: 'Year (index)' } },
+            y: {
+              title: { display: true, text: 'Wealth' },
+              ticks: {
+                callback: (value) => {
+                  // compact-ish formatting
+                  const n = Number(value);
+                  if (!isFinite(n)) return value;
+                  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + "M";
+                  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + "K";
+                  return String(n);
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function resetUI() {
+      hideRaw();
+      summaryCard.style.display = "none";
+      chartCard.style.display = "none";
+      kvs.innerHTML = "";
+      chartNote.textContent = "";
+      if (chart) { chart.destroy(); chart = null; }
+      form.classList.remove("error", "ok");
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resetUI();
+
+      runBtn.disabled = true;
+      setStatus("Running...");
+
+      // Build request body to match your backend DTO
+      const body = {
+        currentAge: num("currentAge"),
+        retirementAge: num("retirementAge"),
+        currentSavings: num("currentSavings"),
+        yearlyContribution: num("yearlyContribution"),
+        riskProfile: str("riskProfile"),
+        numSimulations: num("numSimulations"),
+        targetAmount: num("targetAmount")
+      };
+
+      const maxPathsToDraw = 5;
+
+      try {
+        const resp = await fetch("/api/simulate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const text = await resp.text();
+        let data;
+        try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+        if (!resp.ok) {
+          form.classList.add("error");
+          setStatus(`Error: HTTP ${resp.status}`);
+          showRaw(data);
+          return;
+        }
+
+        form.classList.add("ok");
+        setStatus("OK");
+
+        // Render summary + chart
+        renderSummary(data);
+        renderChart(data.samplePaths, maxPathsToDraw);
+
+      } catch (err) {
+        form.classList.add("error");
+        setStatus("Network/Server error");
+        showRaw(String(err));
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+</script>
+</body>
+</html>
