@@ -89,4 +89,4 @@ cd frontend
 npm install
 npm run dev
 ```
-- Backend runs at http://localhost:5173/ (or as indicated in the terminal)
+- Frontend runs at http://localhost:5173/ (or as indicated in the terminal)
