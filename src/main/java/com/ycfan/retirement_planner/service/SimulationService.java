@@ -16,10 +16,10 @@ import java.util.List;
 @Service
 public class SimulationService {
 
-    private final RiskProfileProvider riskProfileProvider;
+    private final RiskAssumptionsService riskAssumptionsService;
 
-    public SimulationService(RiskProfileProvider riskProfileProvider) {
-        this.riskProfileProvider = riskProfileProvider;
+    public SimulationService(RiskAssumptionsService riskAssumptionsService) {
+        this.riskAssumptionsService = riskAssumptionsService;
     }
 
     private static final Logger log =
@@ -41,9 +41,12 @@ public class SimulationService {
 
         List<Double> finalWealths = new ArrayList<>(n);
         List<List<Double>> samplePaths = new ArrayList<>();
+        RiskProfileInfo assumptions = riskAssumptionsService.getAssumptions(req.getRiskProfile());
+        double meanReturn = assumptions.getMean();
+        double stdDev = assumptions.getVolatility();
 
         for (int i = 0; i < n; i++) {
-            PathResult one = simulateOnce(req);
+            PathResult one = simulateOnce(req, meanReturn, stdDev);
             finalWealths.add(one.getFinalWealth());
 
             // Keep a few paths for visualization (e.g., first 5)
@@ -77,7 +80,7 @@ public class SimulationService {
     }
 
     // Simulates a single retirement path using annual contributions and annual returns
-    public PathResult simulateOnce(SimulationRequest req) {
+    public PathResult simulateOnce(SimulationRequest req, double meanReturn, double stdDev) {
 
         int yearsToRetire = req.getRetirementAge() - req.getCurrentAge();
         if (yearsToRetire <= 0) {
@@ -86,9 +89,6 @@ public class SimulationService {
 
         double wealth = req.getCurrentSavings();
         double yearlyContribution = req.getYearlyContribution();
-
-        double meanReturn = riskProfileProvider.getOrDefault(req.getRiskProfile()).getMean(); // annual mean
-        double stdDev = riskProfileProvider.getOrDefault(req.getRiskProfile()).getVolatility();     // annual volatility
 
         List<Double> path = new ArrayList<>();
         path.add(wealth); // initial state (year 0)

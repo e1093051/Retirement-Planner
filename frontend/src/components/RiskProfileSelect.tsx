@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RiskProfileKey, RiskProfilesResponse } from "../api/types";
-import { getRiskProfiles } from "../api/client";
+import type { RiskProfileKey, RiskProfilesResponse, AllocationsResponse  } from "../api/types";
+import { getRiskProfiles, getAllocations } from "../api/client";
+
+
 
 export default function RiskProfileSelect({
   value,
@@ -12,26 +14,40 @@ export default function RiskProfileSelect({
   disabled: boolean;
 }) {
   const [profiles, setProfiles] = useState<RiskProfilesResponse | null>(null);
+  const [allocations, setAllocations] = useState<AllocationsResponse | null>(null);
 
   useEffect(() => {
     getRiskProfiles()
       .then(setProfiles)
       .catch(() => setProfiles(null));
+
+    getAllocations()
+      .then(setAllocations)
+      .catch(() => setAllocations(null));
   }, []);
 
   const tooltipHtml = useMemo(() => {
-    if (!profiles) return "Risk profile assumptions unavailable.";
+    if (!allocations) return "Portfolio assumptions unavailable.";
+
     const order: RiskProfileKey[] = ["conservative", "balanced", "aggressive"];
+
     return order
-      .filter((k) => profiles[k])
+      .filter((k) => allocations[k])
       .map((k) => {
-        const meanPct = Math.round(profiles[k].mean * 100);
-        const volPct = Math.round(profiles[k].volatility * 100);
+        const { symbols, weights, period } = allocations[k];
+
         const name = k[0].toUpperCase() + k.slice(1);
-        return `${name}: annual return=${meanPct}%, volatility=${volPct}%`;
+
+        const weightPct = weights
+          .split(",")
+          .map((w) => `${Math.round(Number(w) * 100)}%`)
+          .join(" / ");
+
+        return `${name}: ${symbols} (${weightPct}), based on ${period} historical data`;
       })
       .join("\n");
-  }, [profiles]);
+  }, [allocations]);
+
 
   return (
     <>

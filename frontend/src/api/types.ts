@@ -16,7 +16,7 @@ export interface SimulateResponse {
   medianWealth: number;
   p10Wealth: number;
   p90Wealth: number;
-  probabilityReachTarget: number; // 例如 0.42 或 "42%"
+  probabilityReachTarget: number;
   samplePaths?: number[][];
 }
 
@@ -24,3 +24,7 @@ export type RiskProfilesResponse = Record<
   RiskProfileKey,
   { mean: number; volatility: number }
 >;
+
+export type AllocationInfo = { symbols: string; weights: string; period: string };
+export type AllocationMap = Record<"conservative" | "balanced" | "aggressive", AllocationInfo>;
+

@@ -346,12 +346,13 @@
         runBtn.disabled = false;
       }
     });
+
 async function loadRiskProfilesTooltip() {
   const tooltip = document.getElementById("riskTooltip");
   if (!tooltip) return;
 
   try {
-    const resp = await fetch("/api/risk-profiles");
+    const resp = await fetch("/api/allocations");
     const text = await resp.text();
     const data = text ? JSON.parse(text) : null;
 
@@ -367,11 +368,21 @@ async function loadRiskProfilesTooltip() {
 
     for (const k of order) {
       if (!data[k]) continue;
-      const meanPct = (data[k].mean * 100).toFixed(0);
-      const volPct = (data[k].volatility * 100).toFixed(0);
+
+      const { symbols, weights, period } = data[k];
       const name = k[0].toUpperCase() + k.slice(1);
-      lines.push(`${name}: annual return=${meanPct}%, volatility=${volPct}%`);
+
+      // 把 0.7000,0.3000 變成 70% / 30%
+      const weightPct = weights
+        .split(",")
+        .map(w => (Number(w) * 100).toFixed(0) + "%")
+        .join(" / ");
+
+      lines.push(
+        `${name}: ${symbols} (${weightPct}), based on ${period} historical data`
+      );
     }
+
 
     tooltip.innerHTML = lines.join("<br/>");
   } catch (e) {

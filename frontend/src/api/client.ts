@@ -25,3 +25,8 @@ export async function getRiskProfiles(): Promise<RiskProfilesResponse> {
   const resp = await fetch("/api/risk-profiles");
   return readJson<RiskProfilesResponse>(resp);
 }
+
+export async function getAllocations(): Promise<AllocationsResponse> {
+  const resp = await fetch("/api/allocations");
+  return readJson<AllocationsResponse>(resp);
+}

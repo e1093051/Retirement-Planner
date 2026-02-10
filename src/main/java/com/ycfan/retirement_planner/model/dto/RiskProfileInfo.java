@@ -4,7 +4,6 @@ public class RiskProfileInfo {
     private double mean; // annual rate of return
     private double volatility;
 
-    public RiskProfileInfo() {}
 
     public RiskProfileInfo(double mean, double volatility) {
         this.mean = mean;
